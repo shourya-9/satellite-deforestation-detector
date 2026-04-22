@@ -337,32 +337,40 @@ else:
             "The 'before' window should end before the 'after' window starts."
         )
 
-    st.sidebar.markdown("#### Earth Engine project")
-    ee_project = st.sidebar.text_input(
-        "Google Cloud project ID",
-        value=st.session_state.ee_project,
-        placeholder="e.g. my-ee-project-123456",
-        help=(
-            "Since 2023, Earth Engine requires a Google Cloud project ID.\n\n"
-            "Get one (free) at https://console.cloud.google.com/, then enable "
-            "the Earth Engine API:\n"
-            "https://console.cloud.google.com/apis/library/earthengine.googleapis.com\n\n"
-            "Alternatives: run `earthengine set_project YOUR_ID` once in a "
-            "terminal, or export EARTHENGINE_PROJECT=YOUR_ID."
-        ),
-    )
-    st.session_state.ee_project = ee_project
+    # On deployment EE is preconfigured via secrets/env — the text input
+    # and debug button would just clutter the UI for end users, so we hide
+    # them. Locally (no env var set) the full debug block is shown.
+    _ee_preconfigured = bool(os.environ.get("EARTHENGINE_PROJECT"))
 
-    # Auth status indicator
-    if st.sidebar.button("Check Earth Engine auth", width="stretch"):
-        with st.spinner("Checking Earth Engine..."):
-            ee_status = check_earth_engine_auth(project=ee_project or None)
-        if ee_status["ok"]:
-            st.sidebar.success(ee_status["message"])
-        else:
-            st.sidebar.error(
-                f"{ee_status['message']}\n\n{ee_status['how_to_fix']}"
-            )
+    if _ee_preconfigured:
+        st.sidebar.caption("✅ Earth Engine ready.")
+    else:
+        st.sidebar.markdown("#### Earth Engine project")
+        ee_project = st.sidebar.text_input(
+            "Google Cloud project ID",
+            value=st.session_state.ee_project,
+            placeholder="e.g. my-ee-project-123456",
+            help=(
+                "Since 2023, Earth Engine requires a Google Cloud project ID.\n\n"
+                "Get one (free) at https://console.cloud.google.com/, then enable "
+                "the Earth Engine API:\n"
+                "https://console.cloud.google.com/apis/library/earthengine.googleapis.com\n\n"
+                "Alternatives: run `earthengine set_project YOUR_ID` once in a "
+                "terminal, or export EARTHENGINE_PROJECT=YOUR_ID."
+            ),
+        )
+        st.session_state.ee_project = ee_project
+
+        # Auth status indicator
+        if st.sidebar.button("Check Earth Engine auth", width="stretch"):
+            with st.spinner("Checking Earth Engine..."):
+                ee_status = check_earth_engine_auth(project=ee_project or None)
+            if ee_status["ok"]:
+                st.sidebar.success(ee_status["message"])
+            else:
+                st.sidebar.error(
+                    f"{ee_status['message']}\n\n{ee_status['how_to_fix']}"
+                )
 
 st.sidebar.markdown("### Optional overlays")
 show_rgb = st.sidebar.checkbox(

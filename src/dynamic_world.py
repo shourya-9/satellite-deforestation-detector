@@ -170,13 +170,12 @@ def check_earth_engine_auth(project: Optional[str] = None) -> dict:
 
     _remember_initialized(resolved_project)
 
-    project_part = f" (project: {resolved_project})" if resolved_project else ""
     return {
         "ok": True,
-        "message": f"Earth Engine is authenticated{project_part}.",
+        "message": "Earth Engine is authenticated.",
         "how_to_fix": "",
-        # Still expose the credential path programmatically in case anything
-        # else wants to inspect it; just don't surface it in the user message.
+        # Expose the credential path and project programmatically in case
+        # anything else wants to inspect them; just don't surface in the UI.
         "auth_method": auth_method,
         "auth_identity": auth_identity,
         "project": resolved_project,
