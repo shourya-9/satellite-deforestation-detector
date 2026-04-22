@@ -1,8 +1,0 @@
-# System packages installed via apt on Streamlit Community Cloud.
-# Modern rasterio/fiona wheels bundle GDAL, so this is usually empty.
-# If the build fails citing a missing shared library, uncomment below.
-#
-# gdal-bin
-# libgdal-dev
-# libgeos-dev
-# libproj-dev
