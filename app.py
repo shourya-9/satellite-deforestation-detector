@@ -405,35 +405,45 @@ except Exception:
 _firms_key_default = _firms_key_env or _firms_key_secrets
 
 firms_key_input = ""
+# On deployment FIRMS_MAP_KEY is preconfigured via secrets/env. Showing it
+# in a text input — even as `type="password"` — still ships the value to the
+# browser. Hide the input entirely in that case and just use the default
+# silently.
+_firms_preconfigured = bool(_firms_key_default)
+
 if show_fires:
-    firms_key_input = st.sidebar.text_input(
-        "FIRMS MAP_KEY",
-        value=_firms_key_default,
-        type="password",
-        help=(
-            "Paste your FIRMS MAP_KEY here. Get one free at "
-            "https://firms.modaps.eosdis.nasa.gov/api/area/ (instant)."
-        ),
-    )
-    if not firms_key_input:
-        st.sidebar.warning("Fires overlay requires a FIRMS MAP_KEY.")
+    if _firms_preconfigured:
+        firms_key_input = _firms_key_default
+        st.sidebar.caption("🔥 FIRMS key ready.")
     else:
-        if st.sidebar.button("Check FIRMS key status", width="stretch"):
-            with st.spinner("Checking FIRMS MAP_KEY..."):
-                status = check_firms_key_status(firms_key_input)
-            if status["ok"]:
-                raw = status.get("raw") or {}
-                if isinstance(raw, dict) and "current_transactions" in raw:
-                    st.sidebar.success(
-                        f"Key is active — "
-                        f"{raw.get('current_transactions')}/"
-                        f"{raw.get('transaction_limit')} transactions used "
-                        f"in the last {raw.get('transaction_interval_minutes', '?')} min."
-                    )
+        firms_key_input = st.sidebar.text_input(
+            "FIRMS MAP_KEY",
+            value="",
+            type="password",
+            help=(
+                "Paste your FIRMS MAP_KEY here. Get one free at "
+                "https://firms.modaps.eosdis.nasa.gov/api/area/ (instant)."
+            ),
+        )
+        if not firms_key_input:
+            st.sidebar.warning("Fires overlay requires a FIRMS MAP_KEY.")
+        else:
+            if st.sidebar.button("Check FIRMS key status", width="stretch"):
+                with st.spinner("Checking FIRMS MAP_KEY..."):
+                    status = check_firms_key_status(firms_key_input)
+                if status["ok"]:
+                    raw = status.get("raw") or {}
+                    if isinstance(raw, dict) and "current_transactions" in raw:
+                        st.sidebar.success(
+                            f"Key is active — "
+                            f"{raw.get('current_transactions')}/"
+                            f"{raw.get('transaction_limit')} transactions used "
+                            f"in the last {raw.get('transaction_interval_minutes', '?')} min."
+                        )
+                    else:
+                        st.sidebar.success(status["message"])
                 else:
-                    st.sidebar.success(status["message"])
-            else:
-                st.sidebar.error(status["message"])
+                    st.sidebar.error(status["message"])
 
 st.sidebar.markdown("---")
 st.sidebar.caption(
