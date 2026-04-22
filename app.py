@@ -24,7 +24,7 @@ import folium
 import numpy as np
 import pandas as pd
 import streamlit as st
-from folium.plugins import Draw
+from folium.plugins import Draw, Geocoder
 from streamlit_folium import st_folium
 
 from src.data import BBox, fetch_lulc, fetch_s2_rgb_preview, available_years
@@ -512,6 +512,23 @@ folium.TileLayer(
     control=True,
 ).add_to(m)
 
+# Place search (OpenStreetMap Nominatim). Adds a 🔍 button in the top-left
+# of the map; users type a place name, pick a result, and the map pans/zooms
+# to it. Then they can draw the rectangle with the Draw tool below.
+Geocoder(
+    collapsed=True,
+    position="topleft",
+    add_marker=False,        # no persistent pin; just fly-to
+    placeholder="Search a place...",
+    # Live-suggestion options (passed through to Leaflet-Control-Geocoder).
+    # As-you-type dropdown kicks in after `suggestMinLength` chars, debounced
+    # by `suggestTimeout` ms. `defaultMarkGeocode=False` stops the control
+    # from dropping a marker when a suggestion is picked.
+    suggestMinLength=2,
+    suggestTimeout=200,
+    defaultMarkGeocode=False,
+).add_to(m)
+
 # Draw tool configured for rectangles only. Edit and delete buttons are
 # disabled (they're flaky through streamlit-folium) — use the "Clear AOI"
 # button below the map instead.
@@ -541,6 +558,8 @@ folium.LayerControl(collapsed=True, position="topright").add_to(m)
 with st.expander("ℹ️ How to use the map", expanded=False):
     st.markdown(
         """
+        - **🔍 Search** (top-left): type a place name (e.g. "Amazon", "Dubai",
+          "Bengaluru") to fly the map to it, then draw the rectangle.
         - **Base layers** (top-right icon): toggle between **Satellite**
           (real Earth imagery), **Labels** overlay, and **Streets**.
         - **Left toolbar**:
