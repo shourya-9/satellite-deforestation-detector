@@ -1,25 +1,41 @@
 # 🌎 Earth Time Machine
 
-Detect land-cover change anywhere on Earth between two years, using 10 m
-Sentinel-derived land cover maps. Built as a reproducible pipeline plus a live
-Streamlit UI where the user draws any region on a world map, picks two dates,
-and gets back a change map, statistics, and an auto-generated report.
+**🚀 Live app: [earth-time-machine.streamlit.app](https://earth-time-machine.streamlit.app)**
 
-**No training required.** The pipeline uses a pre-computed global land-cover
-product (Impact Observatory / Esri 10m Annual LULC, hosted on Microsoft
-Planetary Computer) and adds the change-detection + visualization layer on top.
+Detect land-cover change anywhere on Earth between any two dates, using 10 m
+Sentinel-derived land cover maps. Built as a reproducible pipeline plus a live
+Streamlit UI where the user searches or draws any region on a world map, picks
+a date range, and gets back a change map, statistics, and an auto-generated
+report.
+
+**No training required.** The pipeline orchestrates two pre-trained global
+land-cover products:
+
+- **Impact Observatory / Esri 10 m Annual LULC** (via Microsoft Planetary
+  Computer) — yearly composites, 2017–2023, stable reference data.
+- **Google Dynamic World** (via Earth Engine) — new composite every 2–5 days,
+  2015–present, for near-real-time change detection.
+
+The change-detection, UI, and visualization layers sit on top.
 
 ---
 
 ## What it does
 
-1. **Data**: pulls 10m annual land cover from the `io-lulc-annual-v02`
-   collection on Microsoft Planetary Computer — 9 classes (Water, Trees, Crops,
-   Built Area, Bare Ground, Rangeland, …), global, 2017–2023.
-2. **Classification**: already done. We operate on the pre-classified rasters.
-3. **Change detection**: pixel-wise class comparison between two years,
-   transition matrix, per-class area change, notable-transition summaries
-   (forest loss, urban sprawl, agricultural expansion, etc.).
+1. **Data sources** (pick either in the sidebar):
+   - **IO-LULC** — 10 m annual land cover from the `io-lulc-annual-v02`
+     collection on Microsoft Planetary Computer. 9 classes (Water, Trees,
+     Crops, Built Area, Bare Ground, Rangeland, …), global, 2017–2023.
+   - **Dynamic World** — 10 m Sentinel-2-derived land cover via Google
+     Earth Engine. Updated every 2–5 days, 2015–present. Modal (most-common)
+     class per pixel is computed across a user-chosen "before" and "after"
+     date window, then remapped onto the IO-LULC 9-class legend for
+     consistency.
+2. **AOI picker**: place search (OpenStreetMap) + draw rectangle on a world
+   map, or choose one of the built-in preset case studies.
+3. **Change detection**: pixel-wise class comparison, transition matrix,
+   per-class area change, notable-transition summaries (forest loss, urban
+   sprawl, agricultural expansion, etc.).
 4. **Context**:
    - Optional Sentinel-2 L2A RGB previews (median cloud-free composites).
    - Optional NASA FIRMS active-fire detections overlaid for the analysis period.
@@ -141,14 +157,18 @@ locally with `export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json`.
 ## Project structure
 
 ```
-satellite-change-detection/
+earth-time-machine/
 ├── app.py                        # Streamlit app (entry point)
 ├── requirements.txt
+├── packages.txt                  # apt deps for Streamlit Cloud (empty by default)
 ├── README.md
+├── .streamlit/
+│   └── secrets.toml.example      # Template for deploy-time secrets
 ├── src/
 │   ├── __init__.py
 │   ├── data.py                   # Planetary Computer queries (LULC + Sentinel-2)
 │   ├── change_detection.py       # Core change-detection logic
+│   ├── dynamic_world.py          # Google Dynamic World via Earth Engine
 │   ├── overlays.py               # NASA FIRMS fire data
 │   └── viz.py                    # Plotting + folium overlays
 ├── examples/
@@ -228,7 +248,10 @@ with your eye — useful for a capstone upgrade.
   classifications in specific years.
 - **No sub-class changes**: the 9-class scheme can't distinguish, e.g.,
   different forest types. For finer thematic detail, use ESA WorldCover
-  (11 classes) or Dynamic World (via Earth Engine).
+  (11 classes, not wired in).
+- **Nominatim rate-limit**: the in-map place search uses OpenStreetMap's
+  public Nominatim endpoint (1 req/sec). Fine for interactive use; swap for
+  Mapbox / Google if you ever re-purpose this at scale.
 
 ---
 
