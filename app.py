@@ -64,47 +64,6 @@ st.set_page_config(
 )
 
 
-# ---------------------------------------------------------------------------
-# Google Search Console verification
-# ---------------------------------------------------------------------------
-# Streamlit's own index.html template is served as the raw HTML response for
-# the app's root URL. Patching that file once, on disk, puts the verification
-# meta tag in the actual HTML response — which is what Google's verifier
-# reads (it doesn't execute JS for this check, so client-side injection
-# wasn't visible to it).
-#
-# On Streamlit Community Cloud the container filesystem is writable, so this
-# works; on read-only deploy targets the OSError is swallowed and the tag
-# simply doesn't get injected. The edit is idempotent across reruns thanks
-# to the "tag already present" check, and is reapplied on every fresh
-# container start. No Streamlit API dependency — this survives iframe /
-# components-API changes and deprecations.
-_GSC_VERIFICATION_TOKEN = "0EWy1wwLzpXjZtFpPsxxLeB-un9_cJfUYiZylYBB3Iw"
-
-
-def _patch_streamlit_index_head() -> None:
-    from pathlib import Path
-
-    tag = (
-        f'<meta name="google-site-verification" '
-        f'content="{_GSC_VERIFICATION_TOKEN}">'
-    )
-    try:
-        index_path = Path(st.__file__).parent / "static" / "index.html"
-        html = index_path.read_text(encoding="utf-8")
-        if tag in html:
-            return  # already patched — no-op
-        if "<head>" not in html:
-            return  # template restructured; bail rather than corrupt it
-        patched = html.replace("<head>", f"<head>\n    {tag}", 1)
-        index_path.write_text(patched, encoding="utf-8")
-    except OSError:
-        # Read-only filesystem or permission denied — silently skip. The app
-        # still runs; GSC verification just won't succeed in this environment.
-        pass
-
-
-_patch_streamlit_index_head()
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +146,15 @@ st.markdown(
   .stApp > header {
       position: relative;
       z-index: 1;
+  }
+
+  /* Streamlit's default top padding on the main block-container is ~6rem,
+     which leaves too much empty space above the hero. Pull the hero up
+     closer to the top without flush-mounting it against the edge. */
+  .main .block-container,
+  [data-testid="stMainBlockContainer"],
+  [data-testid="block-container"] {
+      padding-top: 3rem !important;
   }
 
   /* --- Hero banner --------------------------------------------------- */
