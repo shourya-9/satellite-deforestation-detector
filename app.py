@@ -14,6 +14,7 @@ Features:
 
 from __future__ import annotations
 
+import base64
 import os
 import re
 import traceback
@@ -57,9 +58,557 @@ from src.dynamic_world import (
 
 
 st.set_page_config(
-    page_title="Satellite Change Detection",
-    page_icon="🛰️",
+    page_title="Earth Time Machine",
+    page_icon="🌎",
     layout="wide",
+)
+
+
+# ---------------------------------------------------------------------------
+# Google Search Console verification
+# ---------------------------------------------------------------------------
+# Streamlit doesn't expose the page <head>, and data-URL iframes are
+# same-origin-restricted so they can't reach window.parent.document. Instead,
+# we inject a hidden <img> whose failed-load `onerror` handler runs inline in
+# the main document and appends the verification meta tag to document.head.
+# Idempotent: updates an existing tag in-place if one is already there.
+_GSC_VERIFICATION_TOKEN = "0EWy1wwLzpXjZtFpPsxxLeB-un9_cJfUYiZylYBB3Iw"
+_GSC_INJECT_JS = (
+    "(function(){"
+    "var n='google-site-verification',"
+    f"t='{_GSC_VERIFICATION_TOKEN}',"
+    "h=document.head,ms=h.getElementsByTagName('meta');"
+    "for(var i=0;i<ms.length;i++){"
+    "if(ms[i].getAttribute('name')===n){ms[i].setAttribute('content',t);return;}"
+    "}"
+    "var m=document.createElement('meta');"
+    "m.setAttribute('name',n);m.setAttribute('content',t);"
+    "h.appendChild(m);"
+    "})()"
+)
+st.markdown(
+    f'<img src="x" style="display:none" alt="" onerror="{_GSC_INJECT_JS}">',
+    unsafe_allow_html=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Global styling — custom CSS for a modern, polished look
+# ---------------------------------------------------------------------------
+# Everything below is pure presentation — no functional changes. Uses Google
+# Fonts (Inter for body, Space Grotesk for headings), gradient brand colors,
+# softer shadows, better buttons / metrics / tabs / sidebar.
+
+st.markdown(
+    """
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+  html, body, [class*="css"], .stMarkdown, .stText, [data-testid="stAppViewContainer"] {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+  }
+
+  /* --- Animated starfield + aurora behind the whole app -------------- */
+  /* Layer 0: drifting green/blue/violet aurora blobs.
+     Layer 1-3: three parallax layers of tiny "stars" made from repeating
+     radial-gradient dots, each drifting at a different speed so the sky
+     looks alive. All purely CSS — no JS, no canvas. */
+  [data-testid="stAppViewContainer"] {
+      position: relative;
+      background: #070b16 !important;
+  }
+  [data-testid="stAppViewContainer"]::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background:
+          radial-gradient(ellipse 60% 40% at 15% 20%, rgba(16,185,129,0.18) 0%, transparent 60%),
+          radial-gradient(ellipse 55% 45% at 85% 75%, rgba(59,130,246,0.15) 0%, transparent 60%),
+          radial-gradient(ellipse 40% 30% at 70% 20%, rgba(139,92,246,0.10) 0%, transparent 60%);
+      animation: auroraDrift 24s ease-in-out infinite alternate;
+      filter: blur(20px);
+  }
+  [data-testid="stAppViewContainer"]::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background-image:
+          radial-gradient(1.5px 1.5px at 20px 30px, rgba(255,255,255,0.85), transparent 50%),
+          radial-gradient(1px 1px at 60px 120px, rgba(255,255,255,0.6), transparent 50%),
+          radial-gradient(1.5px 1.5px at 130px 50px, rgba(200,230,255,0.7), transparent 50%),
+          radial-gradient(1px 1px at 180px 150px, rgba(255,255,255,0.5), transparent 50%),
+          radial-gradient(2px 2px at 240px 80px, rgba(167,243,208,0.8), transparent 50%),
+          radial-gradient(1px 1px at 300px 200px, rgba(255,255,255,0.55), transparent 50%),
+          radial-gradient(1.5px 1.5px at 360px 40px, rgba(255,255,255,0.7), transparent 50%),
+          radial-gradient(1px 1px at 420px 180px, rgba(200,230,255,0.5), transparent 50%);
+      background-size: 500px 300px;
+      animation: starsDrift 120s linear infinite, twinkle 4s ease-in-out infinite;
+      opacity: 0.75;
+  }
+  @keyframes auroraDrift {
+      0%   { transform: translate3d(0, 0, 0) scale(1); }
+      50%  { transform: translate3d(-20px, 15px, 0) scale(1.08); }
+      100% { transform: translate3d(15px, -10px, 0) scale(1.02); }
+  }
+  @keyframes starsDrift {
+      from { background-position: 0 0; }
+      to   { background-position: -500px 300px; }
+  }
+  @keyframes twinkle {
+      0%, 100% { opacity: 0.75; }
+      50%      { opacity: 0.45; }
+  }
+
+  /* Make sure actual content sits above the background layers. The sidebar
+     is deliberately NOT in this rule — Streamlit manages its own stacking
+     context for scroll behavior, and forcing position/z-index breaks the
+     internal overflow-y container. The sidebar's own opaque gradient
+     background (defined below) already covers the animation layers. */
+  .main .block-container,
+  .stApp > header {
+      position: relative;
+      z-index: 1;
+  }
+
+  /* --- Hero banner --------------------------------------------------- */
+  .hero {
+      padding: 2.5rem 2.25rem 2rem 2.25rem;
+      background:
+          radial-gradient(circle at 12% 18%, rgba(16,185,129,0.18) 0%, transparent 45%),
+          radial-gradient(circle at 88% 82%, rgba(59,130,246,0.16) 0%, transparent 45%),
+          linear-gradient(135deg, rgba(15,21,40,0.85) 0%, rgba(19,26,44,0.85) 100%);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      margin-bottom: 1.75rem;
+      position: relative;
+      overflow: hidden;
+  }
+  /* Orbit arc sweeping across the hero — feels like a satellite track. */
+  .hero::before {
+      content: "";
+      position: absolute;
+      width: 900px;
+      height: 900px;
+      left: -300px;
+      top: -650px;
+      border-radius: 50%;
+      border: 1px solid rgba(16,185,129,0.18);
+      box-shadow: inset 0 0 80px rgba(16,185,129,0.04);
+      pointer-events: none;
+  }
+  .hero::after {
+      content: "";
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #34d399;
+      box-shadow: 0 0 14px #10b981, 0 0 28px rgba(16,185,129,0.6);
+      top: 50%;
+      left: 50%;
+      transform-origin: -300px -100px;
+      animation: orbit 14s linear infinite;
+      pointer-events: none;
+  }
+  @keyframes orbit {
+      from { transform: rotate(0deg) translate(450px) rotate(0deg); }
+      to   { transform: rotate(360deg) translate(450px) rotate(-360deg); }
+  }
+  .hero h1 {
+      font-family: 'Space Grotesk', sans-serif !important;
+      font-weight: 700;
+      font-size: 2.75rem;
+      margin: 0;
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #10b981 0%, #3b82f6 55%, #8b5cf6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+  }
+  .hero p {
+      font-size: 1.02rem;
+      color: #9ca3af;
+      margin: 0.75rem 0 0 0;
+      max-width: 680px;
+      line-height: 1.55;
+  }
+  .hero .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(16,185,129,0.1);
+      color: #34d399;
+      border: 1px solid rgba(16,185,129,0.25);
+      padding: 0.3rem 0.8rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      margin-bottom: 1rem;
+      letter-spacing: 0.02em;
+  }
+  .hero .pill .dot {
+      width: 6px; height: 6px;
+      background: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+  }
+
+  /* --- Section headings ---------------------------------------------- */
+  h2, h3 {
+      font-family: 'Space Grotesk', sans-serif !important;
+      font-weight: 600 !important;
+      color: #f3f4f6 !important;
+      letter-spacing: -0.01em;
+  }
+  h3 {
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      margin-top: 1.5rem !important;
+      margin-bottom: 1rem !important;
+  }
+
+  /* --- Compact horizontal stats strip (under hero) ------------------- */
+  .stats-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin: -0.5rem 0 1.25rem 0;
+  }
+  .stat-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: rgba(255,255,255,0.025);
+      border: 1px solid rgba(255,255,255,0.07);
+      padding: 0.35rem 0.85rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      color: #94a3b8;
+      transition: all 0.18s ease;
+      backdrop-filter: blur(8px);
+  }
+  .stat-chip:hover {
+      border-color: rgba(16,185,129,0.35);
+      background: rgba(16,185,129,0.05);
+      transform: translateY(-1px);
+  }
+  .stat-chip .k {
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #6b7280;
+      font-weight: 500;
+  }
+  .stat-chip .v {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 600;
+      color: #e5e7eb;
+  }
+  .stat-chip .live-dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      background: #10b981;
+      border-radius: 50%;
+      margin-right: 4px;
+      box-shadow: 0 0 6px #10b981;
+      animation: pulse 1.8s ease-in-out infinite;
+      vertical-align: middle;
+  }
+
+  /* --- Buttons -------------------------------------------------------- */
+  .stButton > button {
+      font-family: 'Inter', sans-serif !important;
+      font-weight: 500;
+      border-radius: 9px;
+      border: 1px solid rgba(255,255,255,0.1);
+      transition: all 0.18s ease;
+      padding: 0.45rem 1rem;
+  }
+  .stButton > button:hover {
+      transform: translateY(-1px);
+      border-color: rgba(16,185,129,0.5);
+      box-shadow: 0 4px 14px rgba(16,185,129,0.15);
+  }
+  /* Primary button — make the label pop in bright white, regardless of
+     Streamlit's default muted foreground color. */
+  .stButton > button[kind="primary"],
+  .stButton > button[kind="primary"] p,
+  .stButton > button[kind="primary"] div,
+  .stButton > button[kind="primary"] span {
+      color: #ffffff !important;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  }
+  .stButton > button[kind="primary"] {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      border: none;
+      font-weight: 700 !important;
+      letter-spacing: 0.01em;
+  }
+  .stButton > button[kind="primary"]:hover {
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      box-shadow: 0 6px 20px rgba(16,185,129,0.3);
+      transform: translateY(-1px);
+  }
+  .stButton > button[kind="primary"]:active {
+      transform: translateY(0);
+  }
+
+  /* --- Metric cards --------------------------------------------------- */
+  [data-testid="stMetric"] {
+      background: rgba(255,255,255,0.025);
+      border: 1px solid rgba(255,255,255,0.06);
+      padding: 1rem 1.25rem;
+      border-radius: 12px;
+      transition: all 0.18s ease;
+  }
+  [data-testid="stMetric"]:hover {
+      border-color: rgba(16,185,129,0.3);
+      background: rgba(16,185,129,0.03);
+  }
+  [data-testid="stMetricLabel"] {
+      color: #9ca3af !important;
+      font-size: 0.82rem !important;
+      font-weight: 500 !important;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+  }
+  [data-testid="stMetricValue"] {
+      font-family: 'Space Grotesk', sans-serif !important;
+      font-weight: 700 !important;
+      font-size: 1.85rem !important;
+  }
+
+  /* --- Sidebar: "mission control" panel ------------------------------ */
+  [data-testid="stSidebar"] {
+      background:
+          radial-gradient(ellipse 80% 50% at 50% 0%, rgba(16,185,129,0.12) 0%, transparent 60%),
+          linear-gradient(180deg, #0c1324 0%, #080c18 100%) !important;
+      border-right: 1px solid rgba(16,185,129,0.12);
+      box-shadow: inset -1px 0 0 rgba(255,255,255,0.02),
+                  4px 0 24px rgba(0,0,0,0.4);
+  }
+
+  /* Force scroll on the sidebar's inner content container. Streamlit's
+     default behavior got broken by one of our styling rules creating an
+     extra stacking context; this belt-and-suspenders rule targets every
+     inner wrapper Streamlit might use across versions so wheel/touch
+     scrolling works regardless of DOM version. The scrollbar itself is
+     hidden (scrollbar-width: none + webkit pseudo) so the sidebar looks
+     clean — scroll still works via wheel, touch, and keyboard. */
+  section[data-testid="stSidebar"] > div,
+  section[data-testid="stSidebar"] > div > div,
+  section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      max-height: 100vh;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;      /* Firefox */
+      -ms-overflow-style: none;    /* IE / old Edge */
+  }
+  /* Emerald accent stripe at the very top of the sidebar. */
+  [data-testid="stSidebar"]::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent 0%, #10b981 30%, #3b82f6 70%, transparent 100%);
+      opacity: 0.6;
+      pointer-events: none;
+      z-index: 10;
+  }
+
+  /* Sidebar title — big, gradient, spaced. */
+  [data-testid="stSidebar"] h1 {
+      font-family: 'Space Grotesk', sans-serif !important;
+      font-size: 1.55rem !important;
+      font-weight: 700 !important;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.5rem !important;
+      background: linear-gradient(135deg, #10b981 0%, #60a5fa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      border-bottom: none !important;
+      padding-bottom: 0 !important;
+  }
+
+  /* Section headings inside the sidebar: uppercase, small, emerald tick. */
+  [data-testid="stSidebar"] h3 {
+      font-family: 'Space Grotesk', sans-serif !important;
+      font-size: 0.78rem !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.12em !important;
+      text-transform: uppercase;
+      color: #9ca3af !important;
+      margin-top: 1.6rem !important;
+      margin-bottom: 0.6rem !important;
+      padding: 0 0 0 0.75rem !important;
+      border-bottom: none !important;
+      position: relative;
+  }
+  [data-testid="stSidebar"] h3::before {
+      content: "";
+      position: absolute;
+      left: 0; top: 50%;
+      width: 3px; height: 14px;
+      transform: translateY(-50%);
+      background: linear-gradient(180deg, #10b981, #3b82f6);
+      border-radius: 2px;
+  }
+
+  /* Hide the noisy default <hr> rule; we use h3 markers instead. */
+  [data-testid="stSidebar"] hr {
+      border: none !important;
+      height: 1px !important;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent) !important;
+      margin: 1.25rem 0 !important;
+  }
+
+  /* Inputs in the sidebar — polished dark panels with emerald focus. */
+  [data-testid="stSidebar"] [data-baseweb="select"] > div,
+  [data-testid="stSidebar"] input,
+  [data-testid="stSidebar"] textarea {
+      background: rgba(255,255,255,0.03) !important;
+      border: 1px solid rgba(255,255,255,0.08) !important;
+      border-radius: 8px !important;
+      transition: all 0.15s ease;
+      color: #e5e7eb !important;
+  }
+  [data-testid="stSidebar"] [data-baseweb="select"] > div:hover,
+  [data-testid="stSidebar"] input:hover,
+  [data-testid="stSidebar"] textarea:hover {
+      border-color: rgba(16,185,129,0.3) !important;
+      background: rgba(16,185,129,0.04) !important;
+  }
+  [data-testid="stSidebar"] [data-baseweb="select"] > div:focus-within,
+  [data-testid="stSidebar"] input:focus,
+  [data-testid="stSidebar"] textarea:focus {
+      border-color: rgba(16,185,129,0.55) !important;
+      box-shadow: 0 0 0 3px rgba(16,185,129,0.12);
+      background: rgba(16,185,129,0.05) !important;
+  }
+
+  /* Input labels in the sidebar — small, muted, uppercase-ish. */
+  [data-testid="stSidebar"] label {
+      font-size: 0.8rem !important;
+      font-weight: 500 !important;
+      color: #cbd5e1 !important;
+      letter-spacing: 0.02em;
+  }
+
+  /* Caption text (st.caption) — slightly brighter than default for legibility. */
+  [data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+  [data-testid="stSidebar"] .stCaption,
+  [data-testid="stSidebar"] small {
+      color: #94a3b8 !important;
+      line-height: 1.5 !important;
+  }
+
+  /* Radio & checkbox groups — card-like hit targets. */
+  [data-testid="stSidebar"] [role="radiogroup"] > label,
+  [data-testid="stSidebar"] [data-baseweb="checkbox"] {
+      padding: 0.35rem 0.6rem !important;
+      border-radius: 7px;
+      transition: background 0.15s;
+  }
+  [data-testid="stSidebar"] [role="radiogroup"] > label:hover,
+  [data-testid="stSidebar"] [data-baseweb="checkbox"]:hover {
+      background: rgba(16,185,129,0.05);
+  }
+
+  /* Sidebar buttons — inherit the main button style but force full width. */
+  [data-testid="stSidebar"] .stButton > button {
+      width: 100%;
+      background: rgba(16,185,129,0.08);
+      border: 1px solid rgba(16,185,129,0.25);
+      color: #a7f3d0;
+      font-weight: 500;
+  }
+  [data-testid="stSidebar"] .stButton > button:hover {
+      background: rgba(16,185,129,0.15);
+      border-color: rgba(16,185,129,0.5);
+      color: #ffffff;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(16,185,129,0.2);
+  }
+
+  /* Expanders inside the sidebar (e.g. "How to use") - subtle panel. */
+  [data-testid="stSidebar"] [data-testid="stExpander"] {
+      border: 1px solid rgba(255,255,255,0.06);
+      background: rgba(0,0,0,0.25);
+      border-radius: 9px;
+  }
+
+  /* Hide the sidebar scrollbar in Chrome/Safari/Edge. Scroll still works
+     — only the visual track/thumb are removed. */
+  [data-testid="stSidebar"] ::-webkit-scrollbar,
+  section[data-testid="stSidebar"] > div::-webkit-scrollbar,
+  section[data-testid="stSidebar"] > div > div::-webkit-scrollbar {
+      width: 0 !important;
+      height: 0 !important;
+      background: transparent !important;
+      display: none !important;
+  }
+
+  /* --- Expanders ------------------------------------------------------ */
+  [data-testid="stExpander"] {
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.015);
+  }
+
+  /* --- Tabs ----------------------------------------------------------- */
+  .stTabs [data-baseweb="tab-list"] {
+      gap: 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .stTabs [data-baseweb="tab"] {
+      border-radius: 9px 9px 0 0;
+      padding: 0.55rem 1.3rem;
+      font-weight: 500;
+      background: transparent;
+      transition: all 0.15s;
+  }
+  .stTabs [data-baseweb="tab"]:hover {
+      background: rgba(255,255,255,0.03);
+  }
+  .stTabs [aria-selected="true"] {
+      color: #10b981 !important;
+      background: rgba(16,185,129,0.08);
+  }
+
+  /* --- Alerts / status boxes ----------------------------------------- */
+  [data-testid="stAlert"] {
+      border-radius: 10px;
+      border-left-width: 3px;
+  }
+
+  /* --- Hide Streamlit default footer --------------------------------- */
+  footer { visibility: hidden; }
+
+  /* --- Smoother scrollbar -------------------------------------------- */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.1);
+      border-radius: 5px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+</style>
+""",
+    unsafe_allow_html=True,
 )
 
 
@@ -457,10 +1006,437 @@ st.sidebar.caption(
 # Header
 # ---------------------------------------------------------------------------
 
-st.title("🛰️ Satellite Change Detection")
+HERO_HTML = r"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: transparent; overflow: hidden; height: 100%; }
+  body {
+      font-family: 'Inter', system-ui, sans-serif;
+      color: #e5e7eb;
+  }
+
+  #hero-wrap {
+      position: relative;
+      width: 100%;
+      height: 260px;
+      border-radius: 16px;
+      overflow: hidden;
+      background:
+          radial-gradient(ellipse 70% 60% at 15% 20%, rgba(16,185,129,0.18) 0%, transparent 60%),
+          radial-gradient(ellipse 60% 50% at 85% 75%, rgba(59,130,246,0.18) 0%, transparent 60%),
+          linear-gradient(135deg, #060912 0%, #0b1022 60%, #0a0e1a 100%);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 14px 40px rgba(0,0,0,0.4);
+  }
+
+  /* Animated grid overlay — subtle lat/lon vibe. */
+  #hero-wrap::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+          linear-gradient(rgba(16,185,129,0.04) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(16,185,129,0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 75%);
+      -webkit-mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 75%);
+      animation: gridDrift 40s linear infinite;
+      pointer-events: none;
+  }
+  @keyframes gridDrift {
+      from { background-position: 0 0, 0 0; }
+      to   { background-position: 40px 40px, 40px 40px; }
+  }
+
+  /* Scan line that sweeps down the hero every 6s. */
+  #hero-wrap::after {
+      content: "";
+      position: absolute;
+      left: 0; right: 0; top: 0;
+      height: 60%;
+      background: linear-gradient(180deg, transparent 0%, rgba(16,185,129,0.06) 45%, rgba(52,211,153,0.15) 50%, rgba(16,185,129,0.06) 55%, transparent 100%);
+      animation: scan 6s ease-in-out infinite;
+      pointer-events: none;
+      mix-blend-mode: screen;
+  }
+  @keyframes scan {
+      0%   { transform: translateY(-60%); opacity: 0; }
+      10%  { opacity: 1; }
+      90%  { opacity: 1; }
+      100% { transform: translateY(160%); opacity: 0; }
+  }
+
+  #hero-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+  }
+
+  #hero-content {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: 1fr;
+      align-items: center;
+      padding: 1.4rem 1.75rem 1.4rem 1.75rem;
+      pointer-events: none;
+  }
+  #hero-text { pointer-events: auto; max-width: 58%; }
+
+  .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(16,185,129,0.12);
+      color: #6ee7b7;
+      border: 1px solid rgba(16,185,129,0.3);
+      padding: 0.25rem 0.7rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      margin-bottom: 0.65rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      backdrop-filter: blur(6px);
+  }
+  .pill .dot {
+      width: 6px; height: 6px;
+      background: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 10px #10b981;
+      animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.4; transform: scale(1.3); }
+  }
+
+  h1 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 2.4rem;
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      background: linear-gradient(120deg, #6ee7b7 0%, #60a5fa 45%, #a78bfa 90%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 4px 20px rgba(16,185,129,0.15));
+  }
+  h1 .glitch {
+      display: inline-block;
+      animation: float 6s ease-in-out infinite;
+  }
+  @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50%      { transform: translateY(-3px); }
+  }
+
+  #hero-text p.tagline {
+      font-size: 0.92rem;
+      color: #cbd5e1;
+      margin-top: 0.55rem;
+      max-width: 560px;
+      line-height: 1.5;
+      font-weight: 400;
+  }
+
+  @media (max-width: 760px) {
+      #hero-text { max-width: 100%; }
+      #hero-content { padding: 1.2rem; }
+      h1 { font-size: 1.9rem; }
+  }
+</style>
+</head>
+<body>
+<div id="hero-wrap">
+  <canvas id="hero-canvas"></canvas>
+  <div id="hero-content">
+    <div id="hero-text">
+      <span class="pill"><span class="dot"></span>Live satellite change detection</span>
+      <h1><span class="glitch">Earth</span> <span class="glitch" style="animation-delay:-2s">Time</span> <span class="glitch" style="animation-delay:-4s">Machine</span></h1>
+      <p class="tagline">Search or draw any region on Earth, pick two dates, and get a pixel-level change map with transition statistics and a downloadable report.</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function() {
+  const canvas = document.getElementById('hero-canvas');
+  const wrap = document.getElementById('hero-wrap');
+
+  const scene = new THREE.Scene();
+
+  // Orthographic camera: no perspective distortion, so a sphere always
+  // renders as a perfect circle regardless of where it sits in the view.
+  // Crucial here because our hero is very wide relative to its height — a
+  // perspective camera would stretch off-axis objects into ellipses.
+  const VIEW_HEIGHT = 6;  // world-units tall the view shows
+  let aspect = wrap.clientWidth / wrap.clientHeight;
+  const camera = new THREE.OrthographicCamera(
+      -VIEW_HEIGHT * aspect / 2,  VIEW_HEIGHT * aspect / 2,
+       VIEW_HEIGHT / 2,          -VIEW_HEIGHT / 2,
+      -200, 200
+  );
+  camera.position.set(0, 0, 10);
+  camera.lookAt(0, 0, 0);
+
+  const renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+
+  // --- Starfield (3 layers at different depths for parallax) ---
+  // With orthographic cameras `size` is in screen pixels, so we use larger
+  // numeric values and set sizeAttenuation to false.
+  function makeStarLayer(count, spread, size, color) {
+      const geo = new THREE.BufferGeometry();
+      const pos = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+          pos[i*3]   = (Math.random() - 0.5) * spread;
+          pos[i*3+1] = (Math.random() - 0.5) * spread;
+          pos[i*3+2] = (Math.random() - 0.5) * spread;
+      }
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const mat = new THREE.PointsMaterial({
+          color: color, size: size, transparent: true, opacity: 0.85,
+          sizeAttenuation: false,
+      });
+      return new THREE.Points(geo, mat);
+  }
+  const stars1 = makeStarLayer(900, 300, 1.8, 0xffffff);
+  const stars2 = makeStarLayer(500, 200, 1.3, 0xa7f3d0);
+  const stars3 = makeStarLayer(250, 150, 1.0, 0x93c5fd);
+  scene.add(stars1); scene.add(stars2); scene.add(stars3);
+
+  // --- Globe: earth texture + emerald wireframe grid + atmospheric glow ---
+  const globeGroup = new THREE.Group();
+  // Position is recomputed from the orthographic frustum in positionGlobe()
+  // so the globe always sits in the right-center regardless of aspect.
+  globeGroup.position.set(3.0, -0.1, 0);
+  scene.add(globeGroup);
+
+  // Inner sphere: start white so the earth texture displays with true colors
+  // when it loads. We start a texture load immediately and swap in the map
+  // when ready; if the load fails, we fall back to a dark-blue ocean color.
+  const innerGeo = new THREE.SphereGeometry(1.65, 64, 64);
+  const innerMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const innerSphere = new THREE.Mesh(innerGeo, innerMat);
+  globeGroup.add(innerSphere);
+
+  const loader = new THREE.TextureLoader();
+  loader.setCrossOrigin('anonymous');
+  // jsdelivr mirrors the three.js repo with proper CORS headers, so the
+  // texture loads cleanly from the user's browser.
+  loader.load(
+      'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/textures/planets/earth_atmos_2048.jpg',
+      (tex) => {
+          innerMat.map = tex;
+          innerMat.needsUpdate = true;
+      },
+      undefined,
+      (err) => {
+          console.warn('Earth texture failed to load; falling back.', err);
+          innerMat.color.set(0x0a1830);
+      }
+  );
+
+  // Wireframe layer — subtle emerald latitude/longitude grid on top of the
+  // earth texture. Lower opacity than before so the continents show through.
+  const wireGeo = new THREE.SphereGeometry(1.665, 36, 24);
+  const wireMat = new THREE.MeshBasicMaterial({
+      color: 0x10b981, wireframe: true, transparent: true, opacity: 0.22,
+  });
+  const wireSphere = new THREE.Mesh(wireGeo, wireMat);
+  globeGroup.add(wireSphere);
+
+  // Atmosphere — a slightly larger sphere with a fake "fresnel" via additive blending.
+  const atmGeo = new THREE.SphereGeometry(1.95, 48, 48);
+  const atmMat = new THREE.ShaderMaterial({
+      uniforms: {},
+      vertexShader: `
+          varying vec3 vNormal;
+          void main() {
+              vNormal = normalize(normalMatrix * normal);
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }`,
+      fragmentShader: `
+          varying vec3 vNormal;
+          void main() {
+              float intensity = pow(0.65 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.2);
+              gl_FragColor = vec4(0.22, 0.72, 0.95, 1.0) * intensity;
+          }`,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+  });
+  const atmosphere = new THREE.Mesh(atmGeo, atmMat);
+  globeGroup.add(atmosphere);
+
+  // --- Orbit ring ---
+  const orbitRadius = 2.5;
+  const orbitCurve = new THREE.EllipseCurve(0, 0, orbitRadius, orbitRadius, 0, 2 * Math.PI, false, 0);
+  const orbitPoints = orbitCurve.getPoints(128).map(p => new THREE.Vector3(p.x, 0, p.y));
+  const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPoints);
+  const orbitMat = new THREE.LineBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.4 });
+  const orbitLine = new THREE.Line(orbitGeo, orbitMat);
+  orbitLine.rotation.x = Math.PI / 2 - 0.45;
+  orbitLine.rotation.z = 0.25;
+  globeGroup.add(orbitLine);
+
+  // --- Satellite (glowing point with trailing "signal" tail) ---
+  const satGroup = new THREE.Group();
+  globeGroup.add(satGroup);
+
+  const satGeo = new THREE.SphereGeometry(0.07, 12, 12);
+  const satMat = new THREE.MeshBasicMaterial({ color: 0x34d399 });
+  const sat = new THREE.Mesh(satGeo, satMat);
+  satGroup.add(sat);
+
+  // Satellite glow (sprite-ish halo).
+  const haloGeo = new THREE.SphereGeometry(0.16, 12, 12);
+  const haloMat = new THREE.MeshBasicMaterial({
+      color: 0x10b981, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending,
+  });
+  const halo = new THREE.Mesh(haloGeo, haloMat);
+  satGroup.add(halo);
+
+  // Trailing signal cone down to earth.
+  const coneGeo = new THREE.ConeGeometry(0.35, 1.4, 20, 1, true);
+  const coneMat = new THREE.MeshBasicMaterial({
+      color: 0x10b981, transparent: true, opacity: 0.12, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const cone = new THREE.Mesh(coneGeo, coneMat);
+  cone.position.y = -0.8;
+  satGroup.add(cone);
+
+  // --- Mouse parallax ---
+  let targetX = 0, targetY = 0;
+  wrap.addEventListener('mousemove', (e) => {
+      const rect = wrap.getBoundingClientRect();
+      targetX = ((e.clientX - rect.left) / rect.width - 0.5) * 0.3;
+      targetY = ((e.clientY - rect.top)  / rect.height - 0.5) * 0.2;
+  });
+
+  // --- Animation loop ---
+  let t = 0;
+  function animate() {
+      requestAnimationFrame(animate);
+      t += 0.01;
+
+      // Globe rotates on its Y axis; the Earth texture on the inner sphere
+      // spins with it so the continents drift across the face.
+      globeGroup.rotation.y += 0.0035;
+
+      // Parallax stars.
+      stars1.rotation.y += 0.0002;
+      stars2.rotation.y += 0.0004;
+      stars3.rotation.y += 0.0006;
+      stars1.rotation.x += 0.0001;
+
+      // Satellite orbits in tilted plane.
+      const a = t * 0.7;
+      const r = orbitRadius;
+      const tiltX = Math.PI / 2 - 0.45;
+      const tiltZ = 0.25;
+      // Position on flat orbit
+      let px = r * Math.cos(a), py = 0, pz = r * Math.sin(a);
+      // Apply orbit tilt. Three.js default Euler order is XYZ, meaning the
+      // composed rotation acts as Rz · Ry · Rx · v — so we apply X first,
+      // then Z, to match the orbit-line mesh's `rotation.x` then `rotation.z`.
+      // Rotation X
+      let x1 = px;
+      let y1 = py * Math.cos(tiltX) - pz * Math.sin(tiltX);
+      let z1 = py * Math.sin(tiltX) + pz * Math.cos(tiltX);
+      // Rotation Z
+      let x2 = x1 * Math.cos(tiltZ) - y1 * Math.sin(tiltZ);
+      let y2 = x1 * Math.sin(tiltZ) + y1 * Math.cos(tiltZ);
+      let z2 = z1;
+      satGroup.position.set(x2, y2, z2);
+      // Point cone toward the globe center.
+      satGroup.lookAt(globeGroup.position);
+      satGroup.rotateX(Math.PI / 2);
+
+      // Camera parallax.
+      camera.position.x += (targetX * 1.5 - camera.position.x) * 0.04;
+      camera.position.y += (-targetY * 1.2 - camera.position.y) * 0.04;
+      camera.lookAt(0, 0, 0);
+
+      renderer.render(scene, camera);
+  }
+  animate();
+
+  // Keep the globe anchored on the right side of the hero but close enough
+  // to center that the atmosphere halo fully fits. Scale relative to the
+  // view height so the globe fills ~90% of it vertically.
+  function positionGlobe() {
+      const viewHalfW = VIEW_HEIGHT * aspect / 2;
+      // Sit the globe center near the midpoint between the right edge of the
+      // tagline copy (~58% from left of hero) and the right edge of the box.
+      // In ortho world coords this is ~0.58 of the right half-width.
+      globeGroup.position.x = viewHalfW * 0.58;
+      globeGroup.position.y = -0.05;
+      // Target atmosphere diameter = 90% of view height.
+      const atmosphereDiameter = 1.95 * 2;
+      globeGroup.scale.setScalar((VIEW_HEIGHT * 0.9) / atmosphereDiameter);
+  }
+  positionGlobe();
+
+  // Handle resize — reset ortho frustum + renderer + globe placement.
+  const ro = new ResizeObserver(() => {
+      const w = wrap.clientWidth, h = wrap.clientHeight;
+      renderer.setSize(w, h);
+      aspect = w / h;
+      camera.left   = -VIEW_HEIGHT * aspect / 2;
+      camera.right  =  VIEW_HEIGHT * aspect / 2;
+      camera.top    =  VIEW_HEIGHT / 2;
+      camera.bottom = -VIEW_HEIGHT / 2;
+      camera.updateProjectionMatrix();
+      positionGlobe();
+  });
+  ro.observe(wrap);
+})();
+</script>
+</body>
+</html>
+"""
+
+# `st.components.v1.html` is slated for removal (2026-06-01). The
+# successor `st.iframe` doesn't yet accept `srcdoc` in all Streamlit
+# versions, so we encode the Three.js hero as a base64 data URL and hand
+# that to `st.iframe` as `src`. Same sandbox / isolation semantics —
+# scripts execute normally inside the iframe. The iframe has an opaque
+# origin (can't touch window.parent), which is fine here because the
+# hero is purely self-contained.
+_hero_data_url = (
+    "data:text/html;charset=utf-8;base64,"
+    + base64.b64encode(HERO_HTML.encode("utf-8")).decode("ascii")
+)
+st.iframe(src=_hero_data_url, height=285)
+
+# Compact stats strip — carries the info that used to live inside the hero
+# (resolution, coverage, sources, status) but occupies one slim horizontal
+# line instead of stealing ~200px of vertical space from the map below.
 st.markdown(
-    "Detect land-cover change anywhere on Earth between two years using 10m "
-    "Sentinel-derived land cover maps. Pick a preset, or draw your own AOI."
+    """
+    <div class="stats-strip">
+      <div class="stat-chip"><span class="k">Resolution</span><span class="v">10&nbsp;m&nbsp;/&nbsp;pixel</span></div>
+      <div class="stat-chip"><span class="k">Coverage</span><span class="v">Global</span></div>
+      <div class="stat-chip"><span class="k">Sources</span><span class="v">IO-LULC&nbsp;·&nbsp;Dynamic&nbsp;World</span></div>
+      <div class="stat-chip"><span class="k">Status</span><span class="v"><span class="live-dot"></span>Online</span></div>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 
@@ -481,7 +1457,10 @@ else:
 
 m = folium.Map(location=center, zoom_start=zoom, tiles=None, control_scale=True)
 
-# Base layers: Satellite (default) + Streets. Users can toggle in the top-right.
+# Base layers: Satellite is the DEFAULT visible basemap (matches the
+# space/Earth aesthetic of the hero). Streets is available as a toggle in the
+# top-right LayerControl. In folium, the first TileLayer added with
+# overlay=False becomes the active base on load — so satellite goes first.
 folium.TileLayer(
     tiles=(
         "https://server.arcgisonline.com/ArcGIS/rest/services/"
@@ -491,8 +1470,20 @@ folium.TileLayer(
     name="Satellite (Esri World Imagery)",
     overlay=False,
     control=True,
+    show=True,
 ).add_to(m)
 
+folium.TileLayer(
+    tiles="OpenStreetMap",
+    name="Streets (OpenStreetMap)",
+    overlay=False,
+    control=True,
+    show=False,
+).add_to(m)
+
+# Labels overlay sits on top of the satellite imagery so place names remain
+# readable. It's an overlay (not a base), so it can stay enabled regardless
+# of which base layer the user picks.
 folium.TileLayer(
     tiles=(
         "https://server.arcgisonline.com/ArcGIS/rest/services/"
@@ -503,13 +1494,7 @@ folium.TileLayer(
     overlay=True,
     control=True,
     opacity=0.9,
-).add_to(m)
-
-folium.TileLayer(
-    tiles="OpenStreetMap",
-    name="Streets (OpenStreetMap)",
-    overlay=False,
-    control=True,
+    show=True,
 ).add_to(m)
 
 # Place search (OpenStreetMap Nominatim). Adds a 🔍 button in the top-left

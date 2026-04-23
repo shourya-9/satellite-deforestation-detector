@@ -1,0 +1,13 @@
+# Streamlit theme — dark mode with emerald/ocean accent that fits a
+# satellite / remote-sensing app. Commit this; it ships with the app.
+
+[theme]
+base = "dark"
+primaryColor = "#10b981"                 # emerald-500
+backgroundColor = "#0a0e1a"              # deep space blue
+secondaryBackgroundColor = "#131a2c"     # sidebar / cards
+textColor = "#e5e7eb"                    # cool white
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false
