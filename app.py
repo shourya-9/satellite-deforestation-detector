@@ -67,29 +67,63 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 # Google Search Console verification
 # ---------------------------------------------------------------------------
-# Streamlit doesn't expose the page <head>, and data-URL iframes are
-# same-origin-restricted so they can't reach window.parent.document. Instead,
-# we inject a hidden <img> whose failed-load `onerror` handler runs inline in
-# the main document and appends the verification meta tag to document.head.
-# Idempotent: updates an existing tag in-place if one is already there.
+# Injects <meta name="google-site-verification"> into the parent document's
+# <head> so Google can verify site ownership without us needing to edit the
+# Streamlit HTML template.
+#
+# The injection has to happen inside a same-origin iframe (to reach
+# window.parent.document). Data-URL iframes have an opaque origin and can't,
+# so we need a real srcdoc iframe. The helper below prefers the newer
+# `st.iframe(srcdoc=...)` API and falls back to the deprecated
+# `st.components.v1.html` when the installed Streamlit version doesn't
+# support srcdoc yet — so the code Just Works across Streamlit versions and
+# migrates itself automatically once srcdoc support lands.
 _GSC_VERIFICATION_TOKEN = "0EWy1wwLzpXjZtFpPsxxLeB-un9_cJfUYiZylYBB3Iw"
-_GSC_INJECT_JS = (
-    "(function(){"
-    "var n='google-site-verification',"
-    f"t='{_GSC_VERIFICATION_TOKEN}',"
-    "h=document.head,ms=h.getElementsByTagName('meta');"
-    "for(var i=0;i<ms.length;i++){"
-    "if(ms[i].getAttribute('name')===n){ms[i].setAttribute('content',t);return;}"
-    "}"
-    "var m=document.createElement('meta');"
-    "m.setAttribute('name',n);m.setAttribute('content',t);"
-    "h.appendChild(m);"
-    "})()"
-)
-st.markdown(
-    f'<img src="x" style="display:none" alt="" onerror="{_GSC_INJECT_JS}">',
-    unsafe_allow_html=True,
-)
+
+
+def _render_srcdoc_iframe(html_body: str, height: int = 0) -> None:
+    """Render same-origin HTML in an iframe, hiding deprecation noise.
+
+    Order of preference:
+      1. `st.iframe(srcdoc=...)` — the future-proof API Streamlit is moving
+         toward. Not available on older versions; we catch the TypeError.
+      2. `st.components.v1.html(...)` — deprecated (removal 2026-06-01) but
+         works on every current Streamlit. By the removal date, (1) will
+         work on any Streamlit release that drops (2), so this fallback
+         becomes a no-op path.
+    """
+    try:
+        st.iframe(srcdoc=html_body, height=height)
+        return
+    except TypeError:
+        pass
+    try:
+        import streamlit.components.v1 as _components
+        _components.html(html_body, height=height)
+    except Exception:
+        # Neither API available — silent no-op. (Should never happen in
+        # practice; both APIs have coexisted for years.)
+        pass
+
+
+_GSC_SRCDOC = f"""<!doctype html><html><body><script>
+(function() {{
+    try {{
+        var doc = window.parent && window.parent.document;
+        if (!doc) return;
+        var n = 'google-site-verification';
+        var t = '{_GSC_VERIFICATION_TOKEN}';
+        var e = doc.head.querySelector('meta[name="' + n + '"]');
+        if (e) {{ e.setAttribute('content', t); return; }}
+        var m = doc.createElement('meta');
+        m.setAttribute('name', n);
+        m.setAttribute('content', t);
+        doc.head.appendChild(m);
+    }} catch (err) {{ /* cross-origin or detached — silent no-op */ }}
+}})();
+</script></body></html>"""
+
+_render_srcdoc_iframe(_GSC_SRCDOC, height=0)
 
 
 # ---------------------------------------------------------------------------
