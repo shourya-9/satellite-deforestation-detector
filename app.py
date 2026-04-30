@@ -759,16 +759,17 @@ DATA_SOURCE_OPTIONS = {
     "dw": "Google Dynamic World (near-real-time, any 2015-today window)",
 }
 _data_source_keys = list(DATA_SOURCE_OPTIONS.keys())
-_current_ds_idx = _data_source_keys.index(
-    st.session_state.data_source
-    if st.session_state.data_source in _data_source_keys
-    else "iolulc"
-)
+# Guard against an out-of-range value from older session state. The radio
+# itself reads/writes st.session_state.data_source via `key=`, so we don't
+# need (and must not have) `index=` + a post-render write — that double-source
+# pattern was causing a "first click reverts" bug.
+if st.session_state.data_source not in _data_source_keys:
+    st.session_state.data_source = "iolulc"
 data_source = st.sidebar.radio(
     "Choose a land-cover product",
     _data_source_keys,
     format_func=lambda k: DATA_SOURCE_OPTIONS[k],
-    index=_current_ds_idx,
+    key="data_source",
     help=(
         "IO-LULC: Impact Observatory annual 10m land cover via Planetary Computer "
         "— no auth, but ~12-month lag and once-per-year snapshots.\n\n"
@@ -777,7 +778,6 @@ data_source = st.sidebar.radio(
         "account (one-time `earthengine authenticate`)."
     ),
 )
-st.session_state.data_source = data_source
 
 # Clear stale results if the user switches data sources.
 if data_source != (st.session_state.get("_last_data_source") or data_source):
