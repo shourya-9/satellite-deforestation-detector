@@ -1255,8 +1255,17 @@ HERO_HTML = r"""
       fragmentShader: `
           varying vec3 vNormal;
           void main() {
-              float intensity = pow(0.65 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.2);
-              gl_FragColor = vec4(0.22, 0.72, 0.95, 1.0) * intensity;
+              // Fresnel-style rim glow. Three knobs:
+              //   0.55  — glow REACH inward from the rim. Higher = glow
+              //           extends further into the disk (filling more of
+              //           the visible globe with halo); lower = tight rim.
+              //   2.6   — falloff EXPONENT. Higher = sharper edge between
+              //           glow and space; lower = softer/wider falloff.
+              //   0.7   — overall BRIGHTNESS multiplier. The cleanest
+              //           single knob to dim or boost the halo without
+              //           changing its shape.
+              float intensity = pow(0.5 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.4);
+              gl_FragColor = vec4(0.22, 0.72, 0.95, 1.0) * intensity * 1.0;
           }`,
       side: THREE.BackSide,
       blending: THREE.AdditiveBlending,
@@ -1305,14 +1314,23 @@ HERO_HTML = r"""
   const halo = new THREE.Mesh(haloGeo, haloMat);
   satGroup.add(halo);
 
-  // Trailing signal cone down to earth.
-  const coneGeo = new THREE.ConeGeometry(0.35, 1.4, 20, 1, true);
+  // Spotlight beam projecting from the satellite onto the globe.
+  // ConeGeometry has its apex at +Y by default; rotating π around X
+  // flips it so the apex sits at the satellite end and the base widens
+  // toward Earth — reads as a real Earth-observation cone instead of a
+  // beam pointing into space. cone.position.y = +0.8 puts the cone on
+  // the Earth-facing side of satGroup (in the post-lookAt+rotateX frame
+  // local +Y points toward the globe). The base extends slightly past
+  // the globe surface; the opaque globe occludes the interior portion
+  // automatically, giving a clean "footprint" where the beam hits.
+  const coneGeo = new THREE.ConeGeometry(0.6, 1.4, 20, 1, true);
   const coneMat = new THREE.MeshBasicMaterial({
       color: 0x10b981, transparent: true, opacity: 0.12, side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending, depthWrite: false,
   });
   const cone = new THREE.Mesh(coneGeo, coneMat);
-  cone.position.y = -0.8;
+  cone.rotation.x = Math.PI;
+  cone.position.y = 0.8;
   satGroup.add(cone);
 
   // --- Mouse parallax ---
