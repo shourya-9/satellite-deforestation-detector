@@ -1,0 +1,79 @@
+# Keep the deployed Streamlit Community Cloud app from going to sleep.
+#
+# Streamlit Cloud puts free apps to sleep after inactivity, and the wrapper
+# page at https://<app>.streamlit.app/ always returns 200 even when the
+# Python container is asleep — so plain HTTP pings (UptimeRobot, Pingdom,
+# etc.) don't actually keep it awake. The reliable trick is to open a real
+# browser session that establishes a WebSocket to the backend, which is
+# what this workflow does via headless Chromium + Playwright.
+#
+# Schedule: every 6 hours. Each run takes ~3 min, so monthly cost is well
+# inside GitHub Actions' free allowance (unlimited for public repos, 2,000
+# min/month for private). Adjust the cron if you want a different cadence.
+
+name: Keep Streamlit awake
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"     # every 6 hours, on the hour
+  workflow_dispatch: {}        # manual run button in the Actions UI
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      APP_URL: https://earth-time-machine.streamlit.app
+    steps:
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright + Chromium
+        run: |
+          npm init -y >/dev/null
+          npm install --silent playwright
+          npx --yes playwright install --with-deps chromium
+
+      - name: Open the app in a real browser
+        run: |
+          node -e "
+          const { chromium } = require('playwright');
+          (async () => {
+            const url = process.env.APP_URL;
+            console.log('Opening', url);
+            const browser = await chromium.launch();
+            const ctx = await browser.newContext();
+            const page = await ctx.newPage();
+
+            // Load the app and wait for the WebSocket-driven UI to settle.
+            // 'networkidle' waits for the Streamlit websocket bursts to quiet
+            // down, which is a good proxy for 'session is established'.
+            await page.goto(url, { waitUntil: 'networkidle', timeout: 120000 });
+
+            // If Streamlit had put the app to sleep, the wrapper shows a
+            // 'Yes, get this app back up!' button. Click it if present.
+            try {
+              const wakeBtn = page.getByRole('button', { name: /get this app back up/i });
+              if (await wakeBtn.count()) {
+                console.log('Sleeping app detected — clicking wake button.');
+                await wakeBtn.first().click({ timeout: 10000 });
+                // Wait for the wake-up to complete and the real app to render.
+                await page.waitForLoadState('networkidle', { timeout: 180000 });
+              }
+            } catch (e) {
+              console.log('Wake button check skipped:', e.message);
+            }
+
+            // Hold the session open long enough for Streamlit's backend to
+            // register a real visit. 60s is comfortably above their threshold.
+            await page.waitForTimeout(60000);
+
+            console.log('Session held; app should now be awake.');
+            await browser.close();
+          })().catch(err => {
+            console.error(err);
+            process.exit(1);
+          });
+          "
